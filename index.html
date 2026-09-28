@@ -308,7 +308,7 @@ details summary{cursor:pointer;color:var(--lime);font-weight:600}
 <script>
 'use strict';
 const APP_ID = 'financeiro-de-bolso';
-const APP_VERSION = '1.0';
+const APP_VERSION = '1.1';
 const PREVIEW = !!window.PREVIEW_MODE;
 
 /* ---------- utils ---------- */
@@ -935,7 +935,8 @@ function viewCartoes() {
       <div class="cc-num">•••• •••• •••• ${esc(c.final || '····')}</div>
       <div class="cc-grid">
         <div><span class="muted tiny">Limite</span><b>${c.limite ? fmtR(c.limite) : '—'}</b></div>
-        <div><span class="muted tiny">Disponível ${last && last.limite_disponivel != null ? '(' + monthShortY(last.mes) + ')' : ''}</span><b class="${last && last.limite_disponivel != null && c.limite && last.limite_disponivel < c.limite * .1 ? 'bad' : ''}">${last && last.limite_disponivel != null ? fmtR(last.limite_disponivel) : '—'}</b></div>
+        ${(() => { const dv = c.disp && (!last || !last.fechamento || c.disp.d >= last.fechamento) ? { v: c.disp.v, lab: fmtDS(c.disp.d) } : last && last.limite_disponivel != null ? { v: last.limite_disponivel, lab: monthShortY(last.mes) } : null;
+          return `<div><span class="muted tiny">Disponível ${dv ? '(' + dv.lab + ')' : ''}</span><b class="${dv && c.limite && dv.v < c.limite * .1 ? 'bad' : ''}">${dv ? fmtR(dv.v) : '—'}</b></div>`; })()}
         <div><span class="muted tiny">Fecha / vence</span><b>dia ${c.fechamento || '—'} / ${c.vencimento || '—'}</b></div>
         <div><span class="muted tiny">Próximo vencimento</span><b>${fmtDS(i.venc)}</b></div>
       </div></section>
@@ -1070,11 +1071,12 @@ function coberturaMapa() {
   const base = {}; for (const c of S.cobertura) base[c.conta + '|' + c.mes] = c.status;
   const rows = [];
   for (const c of S.contas.filter(c => c.ativo !== false)) {
+    const iv = []; for (const [a, b] of S.imports.filter(i => i.c === c.id && i.ini && i.fim).map(i => [i.ini, i.fim]).sort((x, y) => x[0] < y[0] ? -1 : 1)) { const l = iv[iv.length - 1]; if (l && a <= addDays(l[1], 1)) { if (b > l[1]) l[1] = b; } else iv.push([a, b]); }
     const cells = months.map(m => {
       let st = base[c.id + '|' + m] || 'falta';
       if (st !== 'tem' && st !== 'nao_existia') {
         const ini = m + '-01', fim = m + '-' + pad(daysInMonth(m)), lim = fim > today() ? addDays(today(), -2) : fim;
-        if (S.imports.some(i => i.c === c.id && i.ini <= ini && i.fim >= lim)) st = 'tem';
+        if (iv.some(([a, b]) => a <= ini && b >= lim)) st = 'tem';
         if (c.tipo === 'cartao' && S.faturas.some(f => f.conta === c.id && f.mes === m)) st = 'tem';
       }
       return { m, st };
@@ -1144,6 +1146,7 @@ function viewAjustes() {
   return `${backHead('Ajustes e cofre')}
   ${updBanner()}
   ${vaultCard()}
+  ${autoCard()}
   ${lockCard()}
   <h2>Avisos</h2>
   <section class="card stack"><p style="margin:0">Aviso ${S.settings.alertaDias} dias antes de cada conta fixa vencer.</p>
@@ -1158,6 +1161,19 @@ function viewAjustes() {
     <button class="btn" data-act="export-csv-all">${ico('list', 17)} Exportar todos os lançamentos (CSV)</button></section>
   <button class="btn block" data-act="app-check">${ico('refresh', 17)} Procurar atualização do app</button>
   <p class="muted small center">Financeiro de Bolso · v${APP_VERSION} · ${plural(S.lanc.length, 'lançamento', 'lançamentos')} · ${plural(S.fixas.length, 'conta fixa', 'contas fixas')}</p>`;
+}
+
+function autoCard() {
+  const r = S.meta.robo, ok = r && daysBetween(r.em.slice(0, 10), today()) <= 2;
+  return `<section class="card stack"><div class="row between"><b>Atualização automática</b><span class="chip ${ok ? 'ok' : r ? 'bad' : ''}">${ok ? 'Funcionando' : r ? 'Parada' : 'Desligada'}</span></div>
+    ${r ? `<p class="small" style="margin:0">Última chegada do robô: ${fmtDate(r.em)} às ${fmtTime(r.em)} · ${plural(r.n, 'lançamento novo', 'lançamentos novos')} · ${plural(r.contas, 'conta', 'contas')}</p>` : ''}
+    <p class="muted small" style="margin:0">Um robô no seu repositório privado do cofre puxa todo dia de madrugada, pelo Open Finance (Meu Pluggy, grátis), o que entrou nas contas e cartões conectados. Chega trancado na caixa de entrada; o app classifica, tira repetido e soma quando você abre. Conta de empresa (CNPJ) o Meu Pluggy não cobre: dessas, importe o CSV 1× por mês.</p>
+    ${!Vault.cfg ? '<p class="small bad" style="margin:0">Precisa do cofre ligado.</p>' : ''}
+    <details class="small muted"><summary>Como ligar (uma vez)</summary><ol style="padding-left:18px;margin:8px 0 0;line-height:1.5">
+      <li>meu.pluggy.ai › crie a conta › conecte seus bancos (pessoa física).</li>
+      <li>dashboard.pluggy.ai › crie uma aplicação › ative o conector <b>MeuPluggy</b> › autorize cada banco › copie Client ID, Client Secret e os ids das conexões (items).</li>
+      <li>GitHub › repositório do cofre › Settings › Secrets and variables › Actions › New secret: <b>PLUGGY_CLIENT_ID</b>, <b>PLUGGY_CLIENT_SECRET</b>, <b>PLUGGY_ITEM_IDS</b> (ids separados por vírgula).</li>
+      <li>Aba Actions › "Atualizar pelo Open Finance" › Run workflow. Depois disso roda sozinho todo dia.</li></ol></details></section>`;
 }
 
 /* ---------- render ---------- */
@@ -1593,13 +1609,19 @@ async function importJson(text) {
   if (!await askConfirm(`O backup tem ${plural((p.state.lanc || []).length, 'lançamento', 'lançamentos')}. Importar substitui tudo o que está neste aparelho.`, 'Substituir dados')) return;
   S = p.state; migrate(); await save(); render(); toast('Backup importado');
 }
+const packNovos = p => { const ids = new Set(S.lanc.map(l => l.id)); return (p.lanc || []).filter(l => !ids.has(l.id) && !(S.meta.deleted || {})[l.id]); };
 async function importPack(p) {
-  const virgem = !S.lanc.length;
-  const ids = new Set(S.lanc.map(l => l.id));
-  const novos = (p.lanc || []).filter(l => !ids.has(l.id) && !(S.meta.deleted || {})[l.id]);
+  const virgem = !S.lanc.length, novos = packNovos(p);
   const msg = virgem ? `Carregar a base do Claude: ${plural((p.lanc || []).length, 'lançamento', 'lançamentos')}, ${plural((p.fixas || []).length, 'conta fixa', 'contas fixas')}, ${plural((p.contas || []).length, 'conta/cartão', 'contas/cartões')}?`
     : `Adicionar ${plural(novos.length, 'lançamento novo', 'lançamentos novos')}${(p.faturas || []).length ? ` e ${plural(p.faturas.length, 'fatura', 'faturas')}` : ''}? O que você já editou não muda.`;
   if (!await askConfirm(msg, virgem ? 'Carregar' : 'Adicionar', false)) return;
+  const n = mergePack(p);
+  await save(); render();
+  toast(virgem ? 'Base carregada' : `${plural(n, 'lançamento adicionado', 'lançamentos adicionados')}`, 3200);
+}
+/* junta um pacote do Claude sem perguntar (usado pela caixa de entrada). Não apaga nada; o que você editou não muda. */
+function mergePack(p) {
+  const virgem = !S.lanc.length, novos = packNovos(p);
   // contas: adiciona as que faltam; atualiza saldo se o do pacote for mais novo
   for (const c of p.contas || []) {
     const cur = S.contas.find(x => x.id === c.id);
@@ -1617,8 +1639,73 @@ async function importPack(p) {
   for (const f of p.fixas || []) if (!S.fixas.find(x => x.id === f.id) && !(S.meta.deleted || {})[f.id]) S.fixas.push({ pag: {}, ...f });
   for (const it of p.invest || []) { const cur = S.invest.find(x => x.id === it.id); if (!cur) S.invest.push(it); else if (it.data >= (cur.data || '')) Object.assign(cur, { saldo: it.saldo, data: it.data, hist: [...new Map([...(cur.hist || []), ...(it.hist || [])].map(h => [h.d, h])).values()].sort((a, b) => a.d < b.d ? -1 : 1), rendAno: it.rendAno ?? cur.rendAno, rentab: it.rentab ?? cur.rentab }); }
   for (const i of p.imports || []) S.imports.push(i);
-  migrate(); await save(); render();
-  toast(virgem ? 'Base carregada' : `${plural(novos.length, 'lançamento adicionado', 'lançamentos adicionados')}`, 3200);
+  if (p.fixasAtualizar) for (const f of p.fixasAtualizar) { const cur = S.fixas.find(x => x.id === f.id); if (cur) Object.assign(cur, f); }
+  migrate();
+  return novos.length;
+}
+
+/* ---------- robô diário (Meu Pluggy / Open Finance) ---------- */
+/* O robô roda no GitHub (repositório privado do cofre), puxa os lançamentos das contas conectadas no Meu Pluggy
+   e tranca tudo pra caixa de entrada. Aqui o app acha a conta certa (pelos 4 últimos dígitos), tira o que já existe
+   (mesmo valor e mesma data, ou até 3 dias de diferença no cartão), classifica com as suas regras e soma. */
+const nBanco = s => norm(s || '').replace(/\b(UNIBANCO|PAGAMENTOS|BANCO|S\.?A\.?)(?=\s|$)/g, '').replace(/\s+/g, ' ').trim();
+function roboConta(rc) {
+  const fin = String(rc.final || ''), fin2 = String(rc.final2 || ''), bk = nBanco(rc.banco);
+  const same = c => !bk || !c.banco || nBanco(c.banco).includes(bk) || bk.includes(nBanco(c.banco));
+  let c = S.contas.find(c => (c.ext || []).includes(rc.ext));
+  if (!c && fin) c = S.contas.find(c => c.tipo === rc.tipo && c.final && (c.final === fin || c.final === fin2) && same(c));
+  if (!c && rc.tipo === 'cartao') { const sem = S.contas.filter(c => c.tipo === 'cartao' && !c.final && same(c)); c = sem.find(c => c.escopo === 'pessoal') || sem[0]; if (c && fin) c.final = fin; }
+  if (!c) {
+    c = { id: 'of-' + (rc.tipo === 'cartao' ? 'cartao-' : '') + (fin || rc.ext.slice(0, 6)), nome: rc.nome || ((rc.banco || 'Conta') + (rc.tipo === 'cartao' ? ' cartão' : ' conta')), banco: rc.banco || '', tipo: rc.tipo, final: fin, escopo: 'pessoal', ativo: true };
+    S.contas.push(c);
+  }
+  c.ext = [...new Set([...(c.ext || []), rc.ext])];
+  return c;
+}
+function dupRobo(conta, items, tol) {
+  const pool = S.lanc.filter(l => l.c === conta).map(l => ({ d: l.d, v: +l.v.toFixed(2), p: l.p || '', used: false, id: l.id }));
+  const ids = new Set(S.lanc.map(l => l.id)), del = S.meta.deleted || {};
+  const left = [];
+  for (const it of items) { if (ids.has(it.id) || del[it.id]) continue; const m = pool.find(x => !x.used && x.d === it.d && x.v === it.v); if (m) m.used = true; else left.push(it); }
+  const novos = [];
+  for (const it of left) {
+    const m = pool.find(x => !x.used && x.v === it.v && (Math.abs(daysBetween(x.d, it.d)) <= tol || (it.p && x.p === it.p && Math.abs(daysBetween(x.d, it.d)) <= 40)));
+    if (m) m.used = true; else novos.push(it);
+  }
+  return novos;
+}
+function applyRobo(p) {
+  const byExt = {}; let total = 0; const nomes = [];
+  for (const rc of p.contas || []) {
+    const c = roboConta(rc); byExt[rc.ext] = c;
+    const d = (p.gerado || new Date().toISOString()).slice(0, 10);
+    if (rc.tipo === 'conta' && typeof rc.saldo === 'number') c.saldo = { v: rc.saldo, d, fonte: 'Open Finance' };
+    if (rc.tipo === 'cartao') {
+      if (rc.limite) c.limite = rc.limite;
+      if (typeof rc.disponivel === 'number') c.disp = { v: rc.disponivel, d };
+      if (rc.fechamento) c.fechamento = +rc.fechamento.slice(8, 10);
+      if (rc.vencimento) c.vencimento = +rc.vencimento.slice(8, 10);
+      if (typeof rc.fatura === 'number') c.faturaAtual = { v: rc.fatura, fechamento: rc.fechamento || '', vencimento: rc.vencimento || '', d };
+    }
+  }
+  const grupos = {};
+  for (const l of p.lanc || []) { const c = byExt[l.conta]; if (!c) continue; (grupos[c.id] ||= { c, items: [] }).items.push(l); }
+  for (const { c, items } of Object.values(grupos)) {
+    const its = items
+      .filter(l => !(c.tipo === 'cartao' && l.v > 0 && /PAGAMENTO (RECEBIDO|EFETUADO|DE FATURA)|PAGTO|PGTO/.test(norm(l.ds))))
+      .map(l => ({ id: 'of-' + l.ext, d: l.d, ds: l.ds, v: +(+l.v).toFixed(2), p: l.p || '' }))
+      .sort((a, b) => a.d < b.d ? -1 : 1);
+    const novos = dupRobo(c.id, its, c.tipo === 'cartao' ? 3 : 1);
+    const add = novos.map(it => { const l = { id: it.id, d: it.d, c: c.id, ds: it.ds, v: it.v, src: 'robo' }; if (it.p) l.p = it.p; classify(l); return l; });
+    linkRetiradas(add);
+    S.lanc.push(...add);
+    const longo = p.de && p.ate && daysBetween(p.de, p.ate) > 40;   // 1ª rodada (até 1 ano): só conta como coberto a partir do 1º lançamento que veio
+    if (items.length) S.imports.push({ c: c.id, ini: (longo ? its[0].d : p.de) || its[0].d, fim: p.ate || its[its.length - 1].d, arquivo: 'Open Finance (robô)', em: new Date().toISOString(), n: add.length, auto: true });
+    if (add.length) { total += add.length; nomes.push(c.nome); }
+  }
+  S.meta.robo = { em: new Date().toISOString(), gerado: p.gerado || '', n: total, contas: (p.contas || []).length, fonte: p.fonte || 'Open Finance' };
+  migrate();
+  return total ? `${plural(total, 'lançamento novo', 'lançamentos novos')} (${nomes.join(', ')})` : '';
 }
 </script>
 <script>
@@ -1659,7 +1746,62 @@ const GH = {
     if (!r.ok) throw new Error('put ' + r.status);
     return (await r.json()).content.sha;
   },
+  async del(path, sha, message) { const r = await this.req(`${this.base()}/contents/${path}`, { method: 'DELETE', body: JSON.stringify({ message, sha }) }); if (!r.ok && r.status !== 404 && r.status !== 409 && r.status !== 422) throw new Error('del ' + r.status); },
   async commits(path) { const r = await this.req(`${this.base()}/commits?path=${encodeURIComponent(path)}&per_page=40`); if (!r.ok) throw new Error('commits ' + r.status); return r.json(); }
+};
+
+/* ---------- caixa de entrada ----------
+   O app cria um par de chaves. A PÚBLICA fica em inbox-key.json no cofre: com ela só dá pra TRANCAR arquivos pro app.
+   A privada fica no mesmo arquivo, criptografada com a senha do cofre — só o app abre.
+   Quem tranca: o Claude (extrato/fatura que você manda no chat) e o robô diário do Open Finance (.github/workflows no cofre).
+   A cada sincronização o app abre o que estiver em inbox/, soma aos dados (não apaga nada) e apaga da caixa. */
+const Inbox = {
+  priv: null, done: [], last: null,
+  rsa: { name: 'RSA-OAEP', hash: 'SHA-256' },
+  async ensureKey(root) {
+    if (this.priv) return;
+    if (root.some(x => x.name === 'inbox-key.json')) {
+      const j = JSON.parse(TD.decode(await GH.raw('inbox-key.json')));
+      const privJwk = JSON.parse(TD.decode(await decBytes(Vault.key, unb64(j.privEnc))));
+      this.priv = await crypto.subtle.importKey('jwk', privJwk, this.rsa, false, ['decrypt']);
+      return;
+    }
+    const kp = await crypto.subtle.generateKey({ ...this.rsa, modulusLength: 3072, publicExponent: new Uint8Array([1, 0, 1]) }, true, ['encrypt', 'decrypt']);
+    const pub = await crypto.subtle.exportKey('jwk', kp.publicKey), privJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+    const body = { app: APP_ID, kind: 'inbox-key', v: 1, alg: 'RSA-OAEP-256 + A256GCM', created: new Date().toISOString(), device: deviceName(),
+      note: 'Chave PÚBLICA da caixa de entrada do Financeiro de Bolso. Com ela só dá pra trancar arquivos pro app; abrir, só o app (a chave privada abaixo está criptografada com a senha do cofre).',
+      pub: { kty: pub.kty, n: pub.n, e: pub.e, alg: pub.alg }, privEnc: b64(await encBytes(Vault.key, TE.encode(JSON.stringify(privJwk)))) };
+    try { await GH.put('inbox-key.json', TE.encode(JSON.stringify(body, null, 1)), null, 'Caixa de entrada: chave pública'); }
+    catch (e) { if (e.code === 'conflict') return this.ensureKey(await GH.list('')); throw e; }
+    try { await GH.put('inbox/LEIA.md', TE.encode('# Caixa de entrada do Financeiro de Bolso\n\nArquivos .json nesta pasta chegam trancados com a chave pública (inbox-key.json): do Claude ou do robô diário do Open Finance. O app abre, soma aos seus dados e apaga daqui sozinho.\n'), null, 'Caixa de entrada'); } catch (_) {}
+    this.priv = await crypto.subtle.importKey('jwk', privJwk, this.rsa, false, ['decrypt']);
+  },
+  async open(env) {
+    const raw = await crypto.subtle.decrypt(this.rsa, this.priv, unb64(env.ek));
+    const k = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+    return JSON.parse(TD.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(env.iv) }, k, unb64(env.data))));
+  },
+  async process(root) {
+    await this.ensureKey(root);
+    const items = (await GH.list('inbox')).filter(x => x.type === 'file' && /\.json$/i.test(x.name)).sort((a, b) => a.name < b.name ? -1 : 1);
+    const labels = [];
+    for (const it of items) {
+      try {
+        const env = JSON.parse(TD.decode(await GH.raw(it.path)));
+        const pack = await this.open(env);
+        if (pack.app !== APP_ID) throw new Error('formato');
+        let lab = '';
+        if (pack.kind === 'pacote') { const n = mergePack(pack); lab = pack.label || (n ? plural(n, 'lançamento novo', 'lançamentos novos') : ''); }
+        else if (pack.kind === 'robo') lab = applyRobo(pack);
+        else throw new Error('formato');
+        if (lab) labels.push(lab);
+        this.done.push(it);
+      } catch (e) { if (e.code === 'auth') throw e; console.warn('caixa de entrada', it.name, e && e.message); }
+    }
+    this.last = new Date().toISOString();
+    return labels;
+  },
+  async cleanup() { const d = this.done.splice(0); for (const it of d) { try { await GH.del(it.path, it.sha, 'Caixa de entrada: recebido no app'); } catch (_) {} } }
 };
 
 function isVirgin(st) { return !st || (!(st.lanc || []).length && !(st.fixas || []).length && !(st.desejos || []).length); }
@@ -1719,6 +1861,11 @@ const Vault = {
         if (JSON.stringify(S) === plain) this.cfg.lastHash = await sha256hex(plain);
         render();
       }
+      try {
+        const got = await Inbox.process(root);
+        if (got.length) { S.meta.updatedAt = new Date().toISOString(); migrate(); await save({ silent: true }); render(); toast(`Chegou: ${esc(got.join(' · '))}`, 4200); }
+        else if (Inbox.done.length) { S.meta.updatedAt = new Date().toISOString(); await save({ silent: true }); render(); }
+      } catch (e) { if (e.code === 'auth') throw e; console.warn('caixa de entrada', e && e.message); }
       const plain = JSON.stringify(S), h = await sha256hex(plain);
       if (h !== this.cfg.lastHash) {
         const now = new Date();
@@ -1726,6 +1873,7 @@ const Vault = {
         this.cfg.lastSha = await GH.put('vault.json', TE.encode(JSON.stringify(body)), remoteSha, `Atualização ${fmtDate(now)} ${fmtTime(now)} (${deviceName()})`);
         this.cfg.lastHash = h;
       }
+      await Inbox.cleanup();
       this.cfg.lastSync = new Date().toISOString(); this.cfg.error = null;
     } catch (e) {
       if (e.code === 'conflict') retry = true;

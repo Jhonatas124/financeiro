@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "date": "2026-09-28",
-  "notes": "Primeira versão: contas fixas, extrato, cartões, desejos, relatórios, pendências e cofre."
+  "notes": "Caixa de entrada: extratos chegam sozinhos (do Claude e do robô do Open Finance)."
 }
