@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.3",
   "date": "2026-09-28",
-  "notes": "Caixa de entrada: extratos chegam sozinhos (do Claude e do robô do Open Finance)."
+  "notes": "Início simples e aba Ajustes: diga quem é quem (ex.: terapeuta), cale avisos, mude contas fixas e categorias."
 }
